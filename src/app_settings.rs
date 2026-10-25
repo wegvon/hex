@@ -35,6 +35,27 @@ static SETTINGS_TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 static TRANSCRIPTION_SELECTION: OnceLock<RwLock<RuntimeTranscriptionSelection>> = OnceLock::new();
 static MICROPHONE_SELECTION: OnceLock<RwLock<RuntimeMicrophoneSelection>> = OnceLock::new();
 static VOICE_ACTION_SETTINGS: OnceLock<RwLock<VoiceActionSettings>> = OnceLock::new();
+static REMOTE_ASR_SETTINGS: OnceLock<RwLock<RemoteAsrSettings>> = OnceLock::new();
+
+/// The person's own Qwen3-ASR server, used when the Qwen Server model is
+/// selected. Kept apart from `TranscriptionSelection`: the server is
+/// stateless, so changing its address needs no model reload.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default)]
+pub struct RemoteAsrSettings {
+    pub endpoint: String,
+}
+
+/// An SSH relay on the Mac forwards this port to the server.
+pub const DEFAULT_REMOTE_ASR_ENDPOINT: &str = "http://127.0.0.1:17794";
+
+impl Default for RemoteAsrSettings {
+    fn default() -> Self {
+        Self {
+            endpoint: DEFAULT_REMOTE_ASR_ENDPOINT.into(),
+        }
+    }
+}
 
 #[derive(Default)]
 struct RuntimeTranscriptionSelection {
@@ -997,6 +1018,7 @@ pub struct AppSettings {
     pub show_dock_icon: bool,
     pub transcription: TranscriptionSelection,
     pub transcription_recents: Vec<TranscriptionSelection>,
+    pub remote_asr: RemoteAsrSettings,
     pub dictation_processing: DictationProcessingSettings,
     pub voice_action: VoiceActionSettings,
     pub history_retention: crate::history::HistoryRetention,
@@ -1061,6 +1083,7 @@ impl Default for AppSettings {
             show_dock_icon: true,
             transcription: default_transcription(),
             transcription_recents: Vec::new(),
+            remote_asr: RemoteAsrSettings::default(),
             dictation_processing: DictationProcessingSettings::default(),
             voice_action: VoiceActionSettings::default(),
             history_retention: crate::history::HistoryRetention::default(),
@@ -1338,6 +1361,10 @@ impl AppSettings {
             .get_or_init(Default::default)
             .write()
             .unwrap_or_else(|error| error.into_inner()) = self.voice_action.clone();
+        *REMOTE_ASR_SETTINGS
+            .get_or_init(Default::default)
+            .write()
+            .unwrap_or_else(|error| error.into_inner()) = self.remote_asr.clone();
         crate::vocabulary::apply(&self.vocabulary);
     }
 
@@ -1780,6 +1807,14 @@ pub fn voice_action_settings() -> VoiceActionSettings {
         .clone()
 }
 
+pub fn remote_asr_settings() -> RemoteAsrSettings {
+    REMOTE_ASR_SETTINGS
+        .get_or_init(Default::default)
+        .read()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone()
+}
+
 pub fn hotkey_capture_active() -> bool {
     HOTKEY_CAPTURE_ACTIVE.load(Ordering::Acquire)
 }
@@ -2077,6 +2112,26 @@ mod tests {
             reloaded.transcription.model,
             TranscriptionModelId::ParakeetV3
         );
+    }
+
+    #[test]
+    fn remote_asr_defaults_to_the_mac_relay_and_round_trips() {
+        assert_eq!(
+            AppSettings::default().remote_asr.endpoint,
+            DEFAULT_REMOTE_ASR_ENDPOINT
+        );
+        // Settings written before the field existed load with the default.
+        let mut value = serde_json::to_value(AppSettings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("remote_asr");
+        let loaded: AppSettings = serde_json::from_value(value).unwrap();
+        assert_eq!(loaded.remote_asr, RemoteAsrSettings::default());
+
+        let dir = TestSettingsDir::new("remote-asr");
+        let mut settings = AppSettings::default();
+        settings.remote_asr.endpoint = "http://rem.lan:7794".into();
+        settings.write_to(&dir.path).unwrap();
+        let reloaded = AppSettings::load_from(&dir.path).unwrap();
+        assert_eq!(reloaded.remote_asr.endpoint, "http://rem.lan:7794");
     }
 
     #[test]

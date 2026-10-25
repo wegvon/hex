@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::apple_speech::AppleSpeech;
 use crate::dictation::{DictationProtocol, VoiceTranscript};
 use crate::parakeet::Parakeet;
+use crate::remote_transcriber::QwenServer;
 use crate::transcription_models::{
     ModelRuntime, TranscriptionModelId, TranscriptionSelection, validate,
 };
@@ -13,6 +14,9 @@ const UNIFIED_ENGLISH_TRAILING_SILENCE_SAMPLES: usize = 3_200;
 pub enum Transcriber {
     Gguf(Box<Parakeet>),
     AppleSpeech(AppleSpeech),
+    /// The Qwen server in settings, read per request so a changed address
+    /// applies to the next dictation without a reload.
+    Remote,
 }
 
 #[derive(Default)]
@@ -50,6 +54,9 @@ impl Transcriber {
                 .map(Box::new)
                 .map(Self::Gguf),
             ModelRuntime::AppleSpeech => AppleSpeech::load(selection).map(Self::AppleSpeech),
+            // No network here: startup must not fail while the server's
+            // relay comes up. Preparation checks the server instead.
+            ModelRuntime::Remote => QwenServer::configured().map(|_| Self::Remote),
         }
     }
 
@@ -57,6 +64,7 @@ impl Transcriber {
         match self {
             Self::Gguf(model) => model.matches_selection(selection),
             Self::AppleSpeech(model) => model.matches_selection(selection),
+            Self::Remote => selection.model == TranscriptionModelId::QwenServer,
         }
     }
 
@@ -65,7 +73,7 @@ impl Transcriber {
     pub fn prewarm(&mut self) -> Result<()> {
         match self {
             Self::Gguf(model) => model.prewarm(),
-            Self::AppleSpeech(_) => Ok(()),
+            Self::AppleSpeech(_) | Self::Remote => Ok(()),
         }
     }
 
@@ -78,6 +86,7 @@ impl Transcriber {
                 model.transcribe(&samples)
             }
             Self::AppleSpeech(model) => model.transcribe(&samples).map(|result| result.text),
+            Self::Remote => QwenServer::configured()?.transcribe(&samples),
         }
     }
 
@@ -94,6 +103,9 @@ impl Transcriber {
             Self::AppleSpeech(model) => model
                 .transcribe(&samples)
                 .map(|result| VoiceTranscript::heard(result.text, protocol)),
+            Self::Remote => QwenServer::configured()?
+                .transcribe(&samples)
+                .map(|text| VoiceTranscript::heard(text, protocol)),
         }
     }
 
@@ -128,6 +140,21 @@ impl Transcriber {
                     })
             }
             Self::AppleSpeech(model) => model.transcribe(&samples),
+            // The server returns text only: one segment spanning the audio.
+            Self::Remote => QwenServer::configured()?
+                .transcribe(&samples)
+                .map(|text| Transcript {
+                    segments: (!text.is_empty())
+                        .then(|| TranscriptSegment {
+                            start_ms: 0,
+                            end_ms: (samples.len() / 16) as i64,
+                            text: text.clone(),
+                        })
+                        .into_iter()
+                        .collect(),
+                    text,
+                    words: Vec::new(),
+                }),
         }
     }
 }

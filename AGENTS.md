@@ -92,6 +92,11 @@ substitute for source inspection or a second roadmap.
   requests on the same engine.
 - `apple_speech`: the Swift `SpeechAnalyzer` bridge with per-locale support
   checks, asset reservation, and batch transcription.
+- `remote_transcriber` (fork): batch transcription on the person's own
+  Qwen3-ASR server through its `/api/start` → `/api/chunk` → `/api/finish`
+  session API, over the platform curl with audio on stdin. The Qwen Server
+  catalog model (`ModelRuntime::Remote`, macOS only) reads the address from
+  `AppSettings.remote_asr` per request; preparation runs one silent session.
 - `transcription`, `transcription_benchmark`: runtime selection, transactional
   warm-model activation, and the fixed-corpus benchmark runner behind
   `hex benchmark-transcription`.

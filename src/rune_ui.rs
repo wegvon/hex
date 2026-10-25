@@ -494,6 +494,9 @@ pub(crate) struct Ui {
     advanced: bool,
     capture: Capture,
     hints: TextEdit,
+    /// The Qwen server address. Shown wherever the model can be chosen, so
+    /// the address is right before the picker checks the server.
+    server: TextEdit,
     vocabulary: vocabulary::VocabularyEditor,
     /// The model the service was last seen preparing, and since when.
     preparing: Option<(TranscriptionModelId, Instant)>,
@@ -548,6 +551,7 @@ impl Ui {
 
     fn with(settings: AppSettings, service: Service) -> Self {
         let hints = TextEdit::new(settings.transcription.recognition_hints.clone());
+        let server = TextEdit::new(settings.remote_asr.endpoint.clone());
         let modes = modes::ModesPane::new(&settings);
         let vocabulary = vocabulary::VocabularyEditor::new(&settings.vocabulary);
         Self {
@@ -564,6 +568,7 @@ impl Ui {
             advanced: false,
             capture: Capture::Idle,
             hints,
+            server,
             vocabulary,
             preparing: None,
             draft_since: None,
@@ -645,6 +650,9 @@ impl Ui {
             .supports_recognition_hints
         {
             candidate.transcription.recognition_hints = self.hints.text.clone();
+        }
+        if qwen_server_available() {
+            candidate.remote_asr.endpoint = self.server.text.trim().to_owned();
         }
         self.modes.project(&mut candidate);
         if self.platform.vocabulary {
@@ -757,6 +765,9 @@ impl Ui {
                 != self.settings.transcription.recognition_hints
             {
                 self.hints = TextEdit::new(service.transcription.recognition_hints.clone());
+            }
+            if service.remote_asr != self.settings.remote_asr {
+                self.server = TextEdit::new(service.remote_asr.endpoint.clone());
             }
             if service.dictation_processing != self.settings.dictation_processing {
                 self.modes.reload(&service);
@@ -1745,6 +1756,13 @@ fn fixture(shortcuts: DesktopShortcuts) -> Ui {
         editing: false,
     });
     ui
+}
+
+fn qwen_server_available() -> bool {
+    crate::transcription_models::definition(
+        crate::transcription_models::TranscriptionModelId::QwenServer,
+    )
+    .available()
 }
 
 #[cfg(all(test, target_os = "linux"))]

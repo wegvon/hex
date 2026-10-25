@@ -628,7 +628,8 @@ fn transcription_action(
         crate::transcription_models::ModelRuntime::Gguf(_) => {
             crate::transcription_models::is_verified(model)
         }
-        crate::transcription_models::ModelRuntime::AppleSpeech => {
+        crate::transcription_models::ModelRuntime::AppleSpeech
+        | crate::transcription_models::ModelRuntime::Remote => {
             crate::transcription_models::is_installed(model, &selection.language)
         }
     };
@@ -1347,6 +1348,7 @@ fn model_infos(path: &str) -> std::result::Result<Vec<ModelInfo>, &'static str> 
             let managed = matches!(
                 model.runtime,
                 crate::transcription_models::ModelRuntime::AppleSpeech
+                    | crate::transcription_models::ModelRuntime::Remote
             );
             let installed = crate::transcription_models::is_installed(model, &language);
             ModelInfo {
@@ -1419,6 +1421,7 @@ fn stream_model_prepare_with(
     let initial_stage = if matches!(
         model.runtime,
         crate::transcription_models::ModelRuntime::AppleSpeech
+            | crate::transcription_models::ModelRuntime::Remote
     ) {
         crate::transcription_models::ModelPreparationStage::Loading as u8
     } else {

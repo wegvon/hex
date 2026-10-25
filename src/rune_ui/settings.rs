@@ -782,6 +782,28 @@ fn dictation_section(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
             _ => None,
         },
     ));
+    if super::qwen_server_available() {
+        rows.push(
+            setting_row(
+                p,
+                "qwen-server",
+                tr("Server address"),
+                Some(tr("Where your Qwen3-ASR server listens")),
+                text_field(
+                    p,
+                    "qwen-server-field",
+                    &ui.server,
+                    crate::app_settings::DEFAULT_REMOTE_ASR_ENDPOINT,
+                    |ui: &mut Ui| &mut ui.server,
+                    |ui: &mut Ui, _| {
+                        let endpoint = ui.server.text.trim().to_owned();
+                        ui.update(|settings| settings.remote_asr.endpoint = endpoint);
+                    },
+                ),
+            )
+            .into(),
+        );
+    }
     if model.supports_recognition_hints {
         rows.push(
             setting_row(
