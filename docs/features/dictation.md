@@ -473,6 +473,28 @@ awake. [Voice Commands](commands.md#spoken-dictation-controls) owns
 `dictate.voice-controls`, its start/stop/Send/cancel phrases, config, and checks;
 this page owns the resulting capture and output.
 
+### Qwen Server (fork)
+
+```ts
+Picker -> "Qwen Server" (macOS; listed as installed, never recommended)   // dictate.qwen-server
+  -> Preparation: one session of 0.5 s silence -> Server answers -> Selected
+     └── Unreachable, HTTP error, bad JSON -> Picker shows the error; nothing selected
+  General -> Server address (default http://127.0.0.1:17794, the Mac's SSH relay)
+Release -> Whole clip, 16 kHz mono f32, no padding
+  -> POST /api/start -> /api/chunk (≤ 30 s each, raw LE f32) -> /api/finish -> text
+     ├── Any step fails -> Best-effort /api/finish frees the session
+     │   -> Dictation fails like any transcription error; nothing is pasted
+     └── Language: decided by the server (Rem forces Turkish); Hex sends no hint
+  Never streams while held; no timestamps; meetings and the local API's
+  segment work keep using GGUF models
+```
+
+Checks: `remote_transcriber::tests` (fake HTTP server: session order, raw PCM
+bytes, chunking, error bodies, session cleanup, unreachable server, address
+validation), `qwen_server_needs_no_download_and_takes_any_language_on_macos_only`,
+`remote_asr_defaults_to_the_mac_relay_and_round_trips`. Live evidence against
+the real server is recorded in `tasks/todo.md`.
+
 ### Ongoing Jobs And Output
 
 ```ts

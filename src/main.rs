@@ -131,6 +131,8 @@ mod process_exit;
 mod recognition;
 #[cfg(target_os = "macos")]
 mod recording_environment;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod remote_transcriber;
 mod rune_ui;
 #[cfg(target_os = "macos")]
 mod smart_turn;

@@ -255,6 +255,8 @@ const TRANSLATIONS: &[(&str, [&str; 5])] = &[
     ("Interface language", ["Język interfejsu", "界面语言", "表示言語", "Sprache der Oberfläche", "Idioma de la interfaz"]),
     ("Language of the Hex interface", ["Język interfejsu Hex", "Hex 界面语言", "Hex の表示言語", "Sprache der Hex-Oberfläche", "Idioma de la interfaz de Hex"]),
     ("System", ["Systemowy", "跟随系统", "システム", "System", "Sistema"]),
+    ("Server address", ["Adres serwera", "服务器地址", "サーバーのアドレス", "Serveradresse", "Dirección del servidor"]),
+    ("Where your Qwen3-ASR server listens", ["Adres, pod którym nasłuchuje Twój serwer Qwen3-ASR", "你的 Qwen3-ASR 服务器的监听地址", "Qwen3-ASR サーバーの待ち受けアドレス", "Wo dein Qwen3-ASR-Server erreichbar ist", "Dónde escucha tu servidor Qwen3-ASR"]),
     ("Recognition hints", ["Podpowiedzi rozpoznawania", "识别提示", "認識ヒント", "Erkennungshinweise", "Sugerencias de reconocimiento"]),
     ("Fastest", ["Najszybszy", "最快", "最速", "Am schnellsten", "Más rápido"]),
     ("Most accurate", ["Najdokładniejszy", "最准确", "最高精度", "Am genauesten", "Más preciso"]),

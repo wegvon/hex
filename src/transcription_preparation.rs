@@ -193,6 +193,11 @@ fn prepare_selection(
         // once, when the listener restarts with the new selection.
         #[cfg(target_os = "macos")]
         crate::transcription::Transcriber::load_selection(selection).map(drop)?;
+        // A server proves itself with one whole session, which also warms it.
+        #[cfg(target_os = "macos")]
+        if matches!(model.runtime, ModelRuntime::Remote) {
+            crate::remote_transcriber::QwenServer::configured()?.check()?;
+        }
         check_canceled()
     })()
     .map_err(|error| error.to_string())

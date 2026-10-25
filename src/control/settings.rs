@@ -178,6 +178,11 @@ const KEYS: &[Key] = &[
         Kind::Text,
         "Names and terms the model should expect (models that support hints)",
     ),
+    key(
+        "remote_asr.endpoint",
+        Kind::Text,
+        "Address of your Qwen3-ASR server for the Qwen Server model (macOS)",
+    ),
     read_only(
         "transcription_recents",
         Kind::Json,
@@ -547,6 +552,13 @@ pub fn apply(
                     &format!("{} doesn't take recognition hints", model.name),
                 ));
             }
+        }
+        "remote_asr.endpoint" => {
+            let endpoint = candidate.remote_asr.endpoint.trim().to_owned();
+            if let Err(error) = crate::remote_transcriber::endpoint_url(&endpoint) {
+                return Err(invalid(name, &error.to_string()));
+            }
+            candidate.remote_asr.endpoint = endpoint;
         }
         "dictation_processing.default_mode" => {
             candidate.dictation_processing.default_mode.name = "Global".into();
@@ -1028,6 +1040,24 @@ mod tests {
                 .code,
             "invalid-value"
         );
+    }
+
+    #[test]
+    fn the_qwen_server_address_is_validated_and_trimmed() {
+        let settings = AppSettings::default();
+        let change = apply(
+            &settings,
+            "remote_asr.endpoint",
+            "  http://rem.lan:7794  ",
+            false,
+            &rules(),
+        )
+        .unwrap();
+        assert_eq!(change.settings.remote_asr.endpoint, "http://rem.lan:7794");
+        for bad in ["rem.lan:7794", "ftp://rem.lan", "http://u:p@rem.lan"] {
+            let error = apply(&settings, "remote_asr.endpoint", bad, false, &rules()).unwrap_err();
+            assert_eq!(error.code, "invalid-value", "{bad}");
+        }
     }
 
     #[test]

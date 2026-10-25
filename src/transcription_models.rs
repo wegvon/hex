@@ -25,6 +25,7 @@ pub enum TranscriptionModelId {
     SenseVoiceSmall,
     CohereTranscribe,
     AppleSpeech,
+    QwenServer,
 }
 
 impl TranscriptionModelId {
@@ -38,6 +39,7 @@ impl TranscriptionModelId {
             Self::SenseVoiceSmall => "sense_voice_small",
             Self::CohereTranscribe => "cohere_transcribe",
             Self::AppleSpeech => "apple_speech",
+            Self::QwenServer => "qwen_server",
         }
     }
 }
@@ -55,6 +57,7 @@ impl FromStr for TranscriptionModelId {
             "sense_voice_small" => Ok(Self::SenseVoiceSmall),
             "cohere_transcribe" => Ok(Self::CohereTranscribe),
             "apple_speech" => Ok(Self::AppleSpeech),
+            "qwen_server" => Ok(Self::QwenServer),
             _ => Err(eyre!("unknown transcription model: {value}")),
         }
     }
@@ -157,6 +160,9 @@ pub struct ModelDefinition {
 pub enum ModelRuntime {
     Gguf(&'static GgufArtifact),
     AppleSpeech,
+    /// The person's own Qwen3-ASR server (`remote_transcriber`); nothing to
+    /// download. macOS only for now.
+    Remote,
 }
 
 pub struct GgufArtifact {
@@ -171,7 +177,11 @@ pub struct GgufArtifact {
 
 impl ModelDefinition {
     pub const fn available(&self) -> bool {
-        !matches!(self.runtime, ModelRuntime::AppleSpeech)
+        match self.runtime {
+            ModelRuntime::Gguf(_) => true,
+            ModelRuntime::AppleSpeech => false,
+            ModelRuntime::Remote => cfg!(target_os = "macos"),
+        }
     }
 
     fn download_url(&self) -> Result<String> {
@@ -217,6 +227,7 @@ impl ModelDefinition {
     pub fn size_label(&self) -> String {
         match self.runtime {
             ModelRuntime::AppleSpeech => "Managed".into(),
+            ModelRuntime::Remote => "Server".into(),
             ModelRuntime::Gguf(artifact) if artifact.bytes >= 1_000_000_000 => {
                 format!("{:.1} GB", artifact.bytes as f64 / 1_000_000_000.0)
             }
@@ -227,7 +238,7 @@ impl ModelDefinition {
     pub const fn download_bytes(&self) -> Option<u64> {
         match self.runtime {
             ModelRuntime::Gguf(artifact) => Some(artifact.bytes),
-            ModelRuntime::AppleSpeech => None,
+            ModelRuntime::AppleSpeech | ModelRuntime::Remote => None,
         }
     }
 }
@@ -428,6 +439,23 @@ pub const MODELS: &[ModelDefinition] = &[
         languages: &["*"],
         accepts_language_hint: true,
         supports_language_detection: false,
+        supports_recognition_hints: false,
+    },
+    // The server decides the language, so every language (and Auto) accepts
+    // it and Hex sends no hint.
+    ModelDefinition {
+        id: TranscriptionModelId::QwenServer,
+        name: "Qwen Server",
+        realtime: "Server",
+        quality: "Server",
+        quality_context: "Your Qwen3-ASR server",
+        coverage: "Set by the server",
+        timestamps: "No timestamps",
+        streams: false,
+        runtime: ModelRuntime::Remote,
+        languages: &["*"],
+        accepts_language_hint: false,
+        supports_language_detection: true,
         supports_recognition_hints: false,
     },
 ];
@@ -631,6 +659,8 @@ pub fn is_installed(model: &ModelDefinition, language: &str) -> bool {
         ModelRuntime::AppleSpeech => crate::apple_speech::AppleSpeech::is_ready(language),
         #[cfg(not(target_os = "macos"))]
         ModelRuntime::AppleSpeech => false,
+        // Nothing to install; preparation proves the server answers.
+        ModelRuntime::Remote => model.available(),
     }
 }
 
@@ -1116,6 +1146,7 @@ mod tests {
             (TranscriptionModelId::SenseVoiceSmall, "sense_voice_small"),
             (TranscriptionModelId::CohereTranscribe, "cohere_transcribe"),
             (TranscriptionModelId::AppleSpeech, "apple_speech"),
+            (TranscriptionModelId::QwenServer, "qwen_server"),
         ] {
             assert_eq!(id.as_str(), name);
             assert_eq!(name.parse::<TranscriptionModelId>().unwrap(), id);
@@ -1143,6 +1174,38 @@ mod tests {
         );
         assert_eq!(apple_speech.download_bytes(), None);
         assert!(model_path(apple_speech).is_err());
+    }
+
+    #[test]
+    fn qwen_server_needs_no_download_and_takes_any_language_on_macos_only() {
+        let server = definition(TranscriptionModelId::QwenServer);
+        assert!(matches!(server.runtime, ModelRuntime::Remote));
+        assert_eq!(server.download_bytes(), None);
+        assert_eq!(server.size_label(), "Server");
+        assert!(model_path(server).is_err());
+        assert!(remove_installed(server).is_err());
+        assert!(!server.streams);
+        assert_eq!(server.runtime_language_hint("tr"), None);
+        assert_eq!(server.available(), cfg!(target_os = "macos"));
+        assert_eq!(is_installed(server, "tr"), cfg!(target_os = "macos"));
+        assert!(
+            choices_for_runtime("tr")
+                .iter()
+                .all(|choice| choice.model.id != TranscriptionModelId::QwenServer),
+            "the server is offered as an installed model, never recommended"
+        );
+        for language in ["tr", "en", AUTO_LANGUAGE] {
+            let selection = TranscriptionSelection {
+                model: TranscriptionModelId::QwenServer,
+                language: language.into(),
+                recognition_hints: String::new(),
+            };
+            assert_eq!(
+                validate(&selection).is_ok(),
+                cfg!(target_os = "macos"),
+                "{language}"
+            );
+        }
     }
 
     #[test]
