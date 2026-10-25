@@ -475,8 +475,10 @@ mod tests {
         let server = QwenServer::new(&std::env::var("HEX_QWEN_SERVER").unwrap()).unwrap();
         let bytes = std::fs::read(std::env::var("HEX_QWEN_AUDIO").unwrap()).unwrap();
         let samples: Vec<f32> = bytes
-            .chunks_exact(4)
-            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|sample| f32::from_le_bytes(*sample))
             .collect();
         server.check().unwrap();
         let started = std::time::Instant::now();

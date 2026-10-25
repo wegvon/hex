@@ -60,7 +60,8 @@ OpenCode post-processing, paste, history) stays unchanged.
 - [x] 5. Preparation runs one silent server session (checks + warms); no download, onboarding sees it installed
 - [x] 6. Settings UI: "Server address" field (shown on macOS), translations in all 5 UI languages
 - [x] 7. Docs: AGENTS.md architecture, docs/features/dictation.md (`dictate.qwen-server`)
-- [ ] 8. macOS compile + tests on CI (fork Actions), then real dictation on the Mac
+- [x] 8a. macOS compile + tests on the Mac itself (Command Line Tools, stubs outside the repo)
+- [ ] 8b. macOS CI on the fork (Actions must be enabled), then real dictation from a Test build
 - [x] 9. Review section
 
 ## Decisions (2026-10-25)
@@ -79,12 +80,24 @@ Verified here (Linux x86_64):
   "Merhaba bugün hava çok güzel. Toplantıya gün sabah üçte yapalım." in 3.0 s (espeak-ng voice)
 - Raw protocol: whole clip in one `/api/chunk` works; warm cost ≈ 1.8 s chunk + 0.7 s finish for 6.3 s
 
+Verified on the Mac (arm64, macOS 27.0.1, rustc 1.99.1):
+- `cargo fmt --check`, `cargo clippy --locked --bin voice-control --tests -D warnings`: clean after one
+  fix. Clippy 1.99 flags `chunks_exact(4)` in the live test (`as_chunks::<4>()` now); the Linux
+  toolchain predated the lint, and CI's stable would have failed on every platform.
+- `cargo test --bin voice-control`: 908 passed, 0 failed, 22 ignored
+- Live through the relay `127.0.0.1:17794` (`say -v Yelda` clips): 8.4 s → 0.9–1.2 s and
+  33.8 s → 3.2–3.7 s, transcripts exact
+- Caveat: Command Line Tools have no Metal compiler and no FoundationModels macro plugin. The local
+  build used an `xcrun` shim (empty indicator metallib, stubbed Apple Intelligence bridge) and
+  `LIBRARY_PATH` for `swiftCompatibility56`; macOS CI with Xcode remains the authority.
+
 Not verified yet:
-- macOS compile/tests (macOS-only code paths: `transcription.rs`, `parakeet.rs`, preparation) → CI on fork
+- macOS CI with Xcode (fork Actions are still disabled: no API, one click in the Actions tab)
 - Real dictation on the Mac through the 127.0.0.1:17794 relay
 
 Findings:
-- Server decodes in 1 s steps sequentially → post-release latency grows ~linearly with speech length.
-  Phase 2 (stream chunks while the key is held) leaves only `/api/finish` after release.
+- Server decodes in 1 s steps sequentially → post-release latency grows ~linearly with speech length:
+  ≈ 0.1 × speech length through the relay (1 min ≈ 6 s). Phase 2 (stream chunks while the key is
+  held) leaves only `/api/finish` after release.
 - Full suite caught a real gap: every persisted setting needs a `hex settings` key → added.
 - Upstream dev moved to bb3d348 (Scrawl capture engine); fork dev still 02ee88e. Sync is a separate decision.
